@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>採收記錄管理</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        h1, h2 {
+            color: #333;
+            font-size: 24px;
+        }
+        label {
+            font-weight: bold;
+            font-size: 18px;
+        }
+        input, select, button {
+            margin: 5px 0;
+            padding: 12px;
+            font-size: 18px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        button {
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        .autocomplete-items {
+            position: absolute;
+            border: 1px solid #ccc;
+            background-color: #fff;
+            max-height: 150px;
+            overflow-y: auto;
+            z-index: 1000;
+            width: 100%;
+            box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .autocomplete-items div {
+            padding: 10px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .autocomplete-items div:hover {
+            background-color: #f1f1f1;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid #ccc;
+        }
+        th, td {
+            padding: 15px;
+            text-align: left;
+            font-size: 16px;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+    </style>
+</head>
+<body>
+    <h1>採收記錄管理</h1>
+
+    <section>
+        <h2>採收記錄輸入</h2>
+        <form id="harvestForm">
+            <label for="name">姓名：</label>
+            <select id="name" required></select>
+
+            <label for="date">日期：</label>
+            <input type="date" id="date" required>
+            <button type="button" onclick="setToday()">今天</button>
+
+            <label for="location">採收位置：</label>
+            <select id="location" required onchange="toggleFields()"></select>
+
+            <!-- 一般採收欄位 -->
+            <div id="normalFields">
+                <label for="crop">採收作物：</label>
+                <input type="text" id="crop" placeholder="輸入作物名稱..." oninput="searchCrops()" autocomplete="off">
+                <div id="cropList" class="autocomplete-items"></div>
+
+                <label for="weight">重量(台斤)：</label>
+                <input type="number" id="weight" step="0.001">
+            </div>
+
+            <!-- 蛋雞舍專屬欄位 -->
+            <div id="eggHouseFields" style="display: none;">
+                <label for="eggType">雞蛋類型：</label>
+                <select id="eggType">
+                    <option value="小小">小小</option>
+                    <option value="新雞">新雞</option>
+                    <option value="特小">特小</option>
+                </select>
+
+                <label for="washedEggs">已洗入庫：</label>
+                <input type="number" id="washedEggs" step="1" placeholder="請輸入數量">
+
+                <label for="brokenEggs">破蛋：</label>
+                <input type="number" id="brokenEggs" step="1" placeholder="請輸入數量">
+            </div>
+
+            <button type="button" onclick="addRecord()">新增</button>
+            <button type="button" onclick="submitRecords()">提交</button>
+        </form>
+    </section>
+
+    <section>
+        <h2>預覽輸入資料</h2>
+        <table id="previewTable">
+            <thead>
+                <tr>
+                    <th>姓名</th>
+                    <th>日期</th>
+                    <th>採收位置</th>
+                    <th>採收作物</th>
+                    <th>重量(台斤)</th>
+                    <th>雞蛋類型</th>
+                    <th>已洗入庫</th>
+                    <th>破蛋</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </section>
+
+    <script>
+        let records = [];
+
+        function toggleFields() {
+            const location = document.getElementById("location").value;
+            const normalFields = document.getElementById("normalFields");
+            const eggHouseFields = document.getElementById("eggHouseFields");
+
+            if (location === "蛋雞舍") {
+                eggHouseFields.style.display = "block";
+                normalFields.style.display = "none";
+            } else {
+                eggHouseFields.style.display = "none";
+                normalFields.style.display = "block";
+            }
+        }
+
+       async function loadOptions() {
+    try {
+        // 載入「姓名」選項
+        const nameResponse = await fetch('/get_names_options');
+        if (!nameResponse.ok) {
+            throw new Error(`無法取得姓名選項，狀態碼：${nameResponse.status}`);
+        }
+        const names = await nameResponse.json();
+        if (!Array.isArray(names)) {
+            throw new Error("姓名選項格式不正確，預期為陣列");
+        }
+        const nameSelect = document.getElementById('name');
+        nameSelect.innerHTML = ""; // 清空現有選項
+        names.forEach(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            nameSelect.appendChild(option);
+        });
+
+        // 載入「採收位置」選項
+        const locationResponse = await fetch('/get_locations_options');
+        if (!locationResponse.ok) {
+            throw new Error(`無法取得採收位置選項，狀態碼：${locationResponse.status}`);
+        }
+        const locations = await locationResponse.json();
+        if (!Array.isArray(locations)) {
+            throw new Error("採收位置選項格式不正確，預期為陣列");
+        }
+        const locationSelect = document.getElementById('location');
+        locationSelect.innerHTML = ""; // 清空現有選項
+        locations.forEach(location => {
+            const option = document.createElement('option');
+            option.value = location;
+            option.textContent = location;
+            locationSelect.appendChild(option);
+        });
+    } catch (error) {
+        console.error('❌ 載入選項失敗：', error);
+        alert(`載入選項失敗：${error.message}`);
+    }
+}
+
+
+async function searchCrops() {
+    const input = document.getElementById("crop");
+    const list = document.getElementById("cropList");
+    list.innerHTML = "";
+    const query = input.value.trim();
+    if (!query) return;
+
+    try {
+        const response = await fetch(`/search_crop_options?q=${encodeURIComponent(query)}`);
+        if (!response.ok) {
+            throw new Error(`無法取得作物選項，狀態碼：${response.status}`);
+        }
+        const result = await response.json();
+        const crops = result.filtered || [];
+        if (!Array.isArray(crops)) {
+            throw new Error("作物選項格式不正確，預期為陣列");
+        }
+        crops.forEach(crop => {
+            const item = document.createElement("div");
+            item.textContent = crop;
+            item.onclick = function () {
+                input.value = crop;
+                list.innerHTML = "";
+            };
+            list.appendChild(item);
+        });
+    } catch (error) {
+        console.error("❌ 搜尋作物失敗：", error);
+        alert(`搜尋作物失敗：${error.message}`);
+    }
+}
+
+
+        function addRecord() {
+            const name = document.getElementById('name').value;
+            const date = document.getElementById('date').value;
+            const location = document.getElementById('location').value;
+            const crop = document.getElementById('crop').value;
+            const weight = document.getElementById('weight').value;
+
+            const eggType = location === "蛋雞舍" ? document.getElementById('eggType').value : null;
+            const washedEggs = location === "蛋雞舍" ? document.getElementById('washedEggs').value : null;
+            const brokenEggs = location === "蛋雞舍" ? document.getElementById('brokenEggs').value : null;
+
+            if (!name || !date || !location || (!crop && location !== "蛋雞舍") || (!weight && location !== "蛋雞舍")) {
+                alert("❌ 所有欄位都是必填的！");
+                return;
+            }
+
+            const record = {
+                姓名: name,
+                日期: date,
+                採收位置: location,
+                採收作物: location === "蛋雞舍" ? "-" : crop,
+                重量: location === "蛋雞舍" ? "-" : weight,
+                雞蛋類型: eggType || "-",
+                已洗入庫: washedEggs || "-",
+                破蛋: brokenEggs || "-"
+            };
+
+            records.push(record);
+            updatePreviewTable();
+        }
+
+        function updatePreviewTable() {
+            const tbody = document.querySelector('#previewTable tbody');
+            tbody.innerHTML = '';
+
+            records.forEach((record, index) => {
+                const row = document.createElement('tr');
+
+                const nameCell = document.createElement('td');
+                nameCell.textContent = record.姓名;
+                row.appendChild(nameCell);
+
+                const dateCell = document.createElement('td');
+                dateCell.textContent = record.日期;
+                row.appendChild(dateCell);
+
+                const locationCell = document.createElement('td');
+                locationCell.textContent = record.採收位置;
+                row.appendChild(locationCell);
+
+                const cropCell = document.createElement('td');
+                cropCell.textContent = record.採收作物;
+                row.appendChild(cropCell);
+
+                const weightCell = document.createElement('td');
+                weightCell.textContent = record.重量;
+                row.appendChild(weightCell);
+
+                const eggTypeCell = document.createElement('td');
+                eggTypeCell.textContent = record.雞蛋類型;
+                row.appendChild(eggTypeCell);
+
+                const washedEggsCell = document.createElement('td');
+                washedEggsCell.textContent = record.已洗入庫;
+                row.appendChild(washedEggsCell);
+
+                const brokenEggsCell = document.createElement('td');
+                brokenEggsCell.textContent = record.破蛋;
+                row.appendChild(brokenEggsCell);
+
+                const deleteCell = document.createElement('td');
+                const deleteButton = document.createElement('button');
+                deleteButton.textContent = '刪除';
+                deleteButton.onclick = () => {
+                    records.splice(index, 1);
+                    updatePreviewTable();
+                };
+                deleteCell.appendChild(deleteButton);
+                row.appendChild(deleteCell);
+
+                tbody.appendChild(row);
+            });
+        }
+
+        async function submitRecords() {
+    if (records.length === 0) {
+        alert('沒有記錄需要提交！');
+        return;
+    }
+
+    try {
+        const response = await fetch('/submit_harvest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(records),
+        });
+
+        // 檢查回應是否為 JSON
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            const result = await response.json();
+            if (response.ok) {
+                alert('提交成功！');
+                records = [];
+                updatePreviewTable();
+            } else {
+                alert(`提交失敗：${result.message}`);
+            }
+        } else {
+            // 如果回應不是 JSON，顯示原始錯誤訊息
+            const text = await response.text();
+            alert(`提交錯誤：${text}`);
+        }
+    } catch (error) {
+        alert(`提交錯誤：${error.message}`);
+    }
+}
+
+
+        function setToday() {
+            const dateInput = document.getElementById('date');
+            if (dateInput) {
+                const today = new Date().toISOString().split('T')[0];
+                dateInput.value = today;
+            } else {
+                console.error("❌ 找不到日期輸入欄位！");
+            }
+        }
+		
+		
+		// 在 <script> 的最後加入以下程式碼
+window.onload = function () {
+    loadOptions();
+};
+
+    </script>
+</body>
+</html>
