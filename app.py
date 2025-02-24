@@ -28,13 +28,19 @@ HARVEST_FILE = "harvest_data.csv"  # 修改為單一 CSV 檔案
 # 獲取環境變數
 credentials_base64 = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
 
-# 解碼 Base64 並載入 JSON
-if credentials_base64:
+# 檢查環境變數是否存在
+if not credentials_base64:
+    raise ValueError("GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable is missing!")
+
+try:
+    # 解碼 Base64 並載入 JSON
     credentials_json = base64.b64decode(credentials_base64).decode('utf-8')
     credentials = json.loads(credentials_json)
-    # 在這裡使用憑證
-else:
-    raise ValueError("GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable is missing!")
+
+    # 使用憑證初始化 Google Cloud Storage 客戶端
+    storage_client = storage.Client(credentials=service_account.Credentials.from_service_account_info(credentials))
+except Exception as e:
+    raise ValueError(f"Failed to decode or parse credentials: {str(e)}")
 
 
 
