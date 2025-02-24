@@ -1,0 +1,7 @@
+flask
+gunicorn
+google-cloud-storage
+pandas
+openpyxl
+line-bot-sdk
+
