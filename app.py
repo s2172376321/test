@@ -25,20 +25,17 @@ CROPS_FILE = "採收作物.csv"
 NAMES_FILE = "姓名.csv"
 HARVEST_FILE = "harvest_data.csv"  # 修改為單一 CSV 檔案
 
-# 確保環境變數已設置
-base64_credentials = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-if not base64_credentials:
+# 獲取環境變數
+credentials_base64 = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+
+# 解碼 Base64 並載入 JSON
+if credentials_base64:
+    credentials_json = base64.b64decode(credentials_base64).decode('utf-8')
+    credentials = json.loads(credentials_json)
+    # 在這裡使用憑證
+else:
     raise ValueError("GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable is missing!")
 
-# 解碼 Base64 字串
-credentials_info = base64.b64decode(base64_credentials)
-
-# 將解碼的字串轉換為字典
-credentials_dict = json.loads(credentials_info)
-
-# 使用憑證初始化 Storage 客戶端
-credentials = service_account.Credentials.from_service_account_info(credentials_dict)
-storage_client = storage.Client(credentials=credentials)
 
 
 def download_csv_from_gcs(filename):
