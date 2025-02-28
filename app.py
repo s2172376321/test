@@ -214,19 +214,12 @@ def submit_harvest():
 
 
 def upload_csv_to_gcs(dataframe, filename):
-    """將 CSV 檔案接續儲存到 Google Cloud Storage"""
+    """將 CSV 檔案儲存到 Google Cloud Storage"""
     bucket = storage_client.bucket(BUCKET_NAME)
     blob = bucket.blob(filename)
 
     try:
-        # 檢查檔案是否已存在於 GCS
-        if blob.exists():
-            existing_data = io.StringIO(blob.download_as_text(encoding="utf-8"))
-            existing_df = pd.read_csv(existing_data)
-            # 合併舊資料與新資料
-            dataframe = pd.concat([existing_df, dataframe], ignore_index=True)
-
-        # 上傳新的合併後 CSV
+        # 直接上傳 CSV，不需要再合併
         output = io.StringIO()
         dataframe.to_csv(output, index=False, encoding="utf-8")
         blob.upload_from_string(output.getvalue(), content_type="text/csv")
