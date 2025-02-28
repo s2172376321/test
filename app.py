@@ -132,83 +132,71 @@ def submit_harvest():
     if not data:
         return jsonify({"success": False, "message": "未接收到資料"}), 400
 
-    # 從 Google Cloud Storage 讀取現有資料
     try:
         existing_df = download_csv_from_gcs(HARVEST_FILE)
-        last_id = existing_df["ID"].max() if "ID" in existing_df.columns else 0  # 取得最後一筆資料的 ID
+        last_id = existing_df["ID"].max() if "ID" in existing_df.columns else 0
     except FileNotFoundError:
-        # 如果檔案不存在，初始化為空 DataFrame
         existing_df = pd.DataFrame(columns=["ID", "姓名", "日期", "採收位置", "採收作物", "重量", "雞蛋類型", "已洗入庫", "破蛋"])
         last_id = 0
 
     records = []
     for record in data:
+        # 日期格式處理
+        date_str = record.get("日期", "")
+        try:
+            # 移除時間部分（如果有的話）
+            date_str = date_str.split()[0]
+            # 將連字號轉換為斜線
+            date_str = date_str.replace('-', '/')
+            # 解析日期
+            date_obj = datetime.strptime(date_str, "%Y/%m/%d")
+            formatted_date = date_obj.strftime("%Y/%m/%d")
+        except ValueError as e:
+            return jsonify({"success": False, "message": f"日期格式錯誤: {date_str}"}), 400
+
         location = record.get("採收位置")
         if location == "蛋雞舍":
-            # 檢查必填欄位
             required_fields = ["姓名", "日期", "採收位置", "雞蛋類型", "已洗入庫", "破蛋"]
             missing_fields = [field for field in required_fields if not record.get(field)]
             if missing_fields:
                 return jsonify({"success": False, "message": f"缺少欄位: {missing_fields}"}), 400
 
-            # 將日期轉換為僅保留日期部分
-            date_str = record.get("日期")
-            try:
-                date_obj = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")  # 假設日期格式為 "YYYY-MM-DD HH:MM:SS"
-                date_only = date_obj.strftime("%Y-%m-%d")  # 轉換為 "YYYY-MM-DD"
-            except ValueError:
-                date_only = date_str  # 如果格式不正確，保留原始值
-
             records.append({
-                "ID": last_id + 1,  # 新的 ID
+                "ID": last_id + 1,
                 "姓名": record.get("姓名"),
-                "日期": date_only,  # 使用僅日期的格式
+                "日期": formatted_date,  # 使用格式化後的日期
                 "採收位置": record.get("採收位置"),
-                "採收作物": "-",  # 蛋雞舍無採收作物，補上 "-"
-                "重量": "-",  # 蛋雞舍無重量，補上 "-"
+                "採收作物": "-",
+                "重量": "-",
                 "雞蛋類型": record.get("雞蛋類型", "-"),
                 "已洗入庫": record.get("已洗入庫", "-"),
                 "破蛋": record.get("破蛋", "-")
             })
-            last_id += 1  # 更新最後的 ID
         else:
-            # 檢查必填欄位
             required_fields = ["姓名", "日期", "採收位置", "採收作物", "重量"]
             missing_fields = [field for field in required_fields if not record.get(field)]
             if missing_fields:
                 return jsonify({"success": False, "message": f"缺少欄位: {missing_fields}"}), 400
 
-            # 將日期轉換為僅保留日期部分
-            date_str = record.get("日期")
-            try:
-                date_obj = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")  # 假設日期格式為 "YYYY-MM-DD HH:MM:SS"
-                date_only = date_obj.strftime("%Y-%m-%d")  # 轉換為 "YYYY-MM-DD"
-            except ValueError:
-                date_only = date_str  # 如果格式不正確，保留原始值
-
             records.append({
-                "ID": last_id + 1,  # 新的 ID
+                "ID": last_id + 1,
                 "姓名": record.get("姓名"),
-                "日期": date_only,  # 使用僅日期的格式
+                "日期": formatted_date,  # 使用格式化後的日期
                 "採收位置": record.get("採收位置"),
                 "採收作物": record.get("採收作物", "-"),
                 "重量": record.get("重量", "-"),
-                "雞蛋類型": "-",  # 非蛋雞舍無雞蛋類型，補上 "-"
-                "已洗入庫": "-",  # 非蛋雞舍無已洗入庫，補上 "-"
-                "破蛋": "-"  # 非蛋雞舍無破蛋，補上 "-"
+                "雞蛋類型": "-",
+                "已洗入庫": "-",
+                "破蛋": "-"
             })
-            last_id += 1  # 更新最後的 ID
+        last_id += 1
 
-    # 將新資料轉換為 DataFrame
     new_df = pd.DataFrame(records)
-
-    # 合併現有資料和新資料
     combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-
-    # 儲存到 Google Cloud Storage
     upload_csv_to_gcs(combined_df, HARVEST_FILE)
 
     return jsonify({"success": True, "message": "資料提交成功"})
+
 
 
 
